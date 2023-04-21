@@ -1,7 +1,7 @@
 import logging
 import os
 
-from dotenv import load_dotenv
+import dotenv
 
 from openai_helper import OpenAIHelper, default_max_tokens
 from telegram_bot import ChatGPTTelegramBot
@@ -9,7 +9,8 @@ from telegram_bot import ChatGPTTelegramBot
 
 def main():
     # Read .env file
-    load_dotenv()
+    dotenv_file = dotenv.find_dotenv(raise_error_if_not_found=True)
+    dotenv.load_dotenv(dotenv_file)
 
     # Setup logging
     logging.basicConfig(
@@ -75,6 +76,7 @@ def main():
         'image_prices': [float(i) for i in os.environ.get('IMAGE_PRICES', "0.016,0.018,0.02").split(",")],
         'transcription_price': float(os.environ.get('TOKEN_PRICE', 0.006)),
         'bot_language': os.environ.get('BOT_LANGUAGE', 'en'),
+        'dotenv_file': dotenv_file,
     }
 
     # Setup and run ChatGPT and Telegram bot

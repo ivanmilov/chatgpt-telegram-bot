@@ -17,6 +17,8 @@ from pydub import AudioSegment
 from openai_helper import OpenAIHelper, localized_text
 from usage_tracker import UsageTracker
 
+import dotenv
+
 
 def message_text(message: Message) -> str:
     """
@@ -205,6 +207,33 @@ class ChatGPTTelegramBot:
            message_thread_id=self.get_thread_id(update),
            text=localized_text('reset_done', self.config['bot_language'])
         )
+
+    async def addUser(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+        user_id = update.message.from_user.id
+        if not self.is_admin(user_id):
+            await update.message.reply_text("Only admin users can do this")
+            return
+
+        contact = update.message.contact
+
+        if str(contact.user_id) in self.config['allowed_user_ids'].split(','):
+            await update.message.reply_text("user already allowed")  # TODO: implement remove user button
+            return
+
+        msg = f"add user {contact.first_name}{' ' + contact.last_name if contact.last_name else ''}?"
+
+        keyboard = [
+            [
+                InlineKeyboardButton("yep", callback_data=f"user_{contact.user_id}"),
+                InlineKeyboardButton("nope", callback_data="user_ignore"),
+            ],
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(msg, reply_markup=reply_markup)
+
 
     async def image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -572,6 +601,7 @@ class ChatGPTTelegramBot:
             logging.error(f'An error occurred while generating the result card for inline query {e}')
 
     async def handle_callback_inline_query(self, update: Update, context: CallbackContext):
+        print(update)
         callback_data = update.callback_query.data
         user_id = update.callback_query.from_user.id
         inline_message_id = update.callback_query.inline_message_id
@@ -679,6 +709,22 @@ class ChatGPTTelegramBot:
                                                    constants.ChatAction.TYPING, is_inline=True)
 
                 self.add_chat_request_to_usage_tracker(user_id, total_tokens)
+
+            if callback_data.startswith('user_'):
+                query = update.callback_query
+                await query.answer()
+                if callback_data != 'user_ignore':
+                    new_user = callback_data.split("user_",1)[1]
+                    users = os.environ["ALLOWED_TELEGRAM_USER_IDS"].split(",")
+                    if new_user and new_user not in users:
+                        users.append(new_user)
+                        dotenv.set_key(self.config['dotenv_file'], "ALLOWED_TELEGRAM_USER_IDS", ",".join(users))
+                        self.config['allowed_user_ids'] += ',' + new_user
+                        await query.edit_message_text(text=f"New user added")
+                    else:
+                        await query.edit_message_text(text=f"already exists or empty")
+                else:
+                    await query.delete_message()
 
         except Exception as e:
             logging.error(f'Failed to respond to an inline query via button callback: {e}')
@@ -1023,6 +1069,7 @@ class ChatGPTTelegramBot:
             filters.VIDEO | filters.VIDEO_NOTE | filters.Document.VIDEO,
             self.transcribe))
         application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), self.prompt))
+        application.add_handler(MessageHandler(filters.CONTACT, self.addUser))
         application.add_handler(InlineQueryHandler(self.inline_query, chat_types=[
             constants.ChatType.GROUP, constants.ChatType.SUPERGROUP, constants.ChatType.PRIVATE
         ]))
