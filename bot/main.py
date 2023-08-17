@@ -84,6 +84,8 @@ def main():
         'bot_language': os.environ.get('BOT_LANGUAGE', 'en'),
     }
 
+    print(telegram_config)
+
     plugin_config = {
         'plugins': os.environ.get('PLUGINS', '').split(',')
     }
